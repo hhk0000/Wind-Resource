@@ -21,5 +21,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git subtree split --prefix=gui -b gui-release
-          git push origin gui-release:gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gui_tree=$(git rev-parse HEAD:gui)
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            parent=$(git rev-parse refs/remotes/origin/gh-pages)
+            current_tree=$(git rev-parse "$parent^{tree}")
+            if [ "$gui_tree" = "$current_tree" ]; then
+              echo "GUI already published to branch"
+              exit 0
+            fi
+            release=$(git commit-tree "$gui_tree" -p "$parent" -m "Publish GUI from $GITHUB_SHA")
+          else
+            release=$(git commit-tree "$gui_tree" -m "Publish GUI from $GITHUB_SHA")
+          fi
+          git push origin "$release:refs/heads/gh-pages"
