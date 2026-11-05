@@ -1,0 +1,25 @@
+name: Publish GUI branch
+on:
+  push:
+    branches: [main]
+    paths: ['gui/**', '.github/workflows/publish-gui.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: gui-publish
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Publish GUI only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git subtree split --prefix=gui -b gui-release
+          git push origin gui-release:gh-pages
