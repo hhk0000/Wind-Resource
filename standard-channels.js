@@ -1,0 +1,9 @@
+/* Stable internal names. Original headers and sensor identities are never overwritten. */
+(function(root){
+'use strict';
+const C=root.ChannelLibrary||(typeof require==='function'?require('./channel-library.js'):null);
+const prefixes={wind_speed:'WS',wind_direction:'WD',wind_power_density:'WPD',temperature:'TEMP',pressure:'PRES',humidity:'RH',voltage:'VOLT',u_component:'U',v_component:'V'};
+function stage(name){const stem=String(name).replace(/\.[^.]+$/,'');const rules={raw:/原始|\braw\b|\boriginal\b/i,qc:/质控|删除标记|\bqc\b|\bclean\b/i,final:/结果数据|最终|轮毂|外推|订正|\bfinal\b|\bhub\b|\bresult\b/i,mesoscale:/中尺度|era5|merra|meso/i};const hits=Object.keys(rules).filter(k=>rules[k].test(stem));return hits.length===1?hits[0]:''}
+function schema(catalog,{time=-1,clock=-1,flag=-1,ignored=[]}={}){const used=new Set(),result=[];for(const c of catalog){let name=null,kind='parameter';if(c.index===time){name='TIME';kind='time'}else if(c.index===clock){name='CLOCK';kind='clock'}else if(c.index===flag){name='QC-FLAG';kind='flag'}else if(ignored.includes(c.index)||c.status==='excluded'){kind='ignored'}else if(C.isAccepted(c)&&prefixes[c.element]&&Number.isFinite(c.height)){name=prefixes[c.element]+'-'+c.height+'m'+(c.statistic==='mean'?'':'-'+c.statistic.toUpperCase());if(used.has(name)){const sensor=c.sensor?.replace(/^sensor-/,'');let candidate=name+(sensor?'-CH'+sensor:'-C'+(c.index+1));if(used.has(candidate))candidate+='-C'+(c.index+1);name=candidate}}if(name)used.add(name);result.push({index:c.index,original:c.header,standard:name,kind,element:c.element,statistic:c.statistic,height:c.height,sensor:c.sensor,sourceUnit:c.sourceUnit,canonicalUnit:c.canonicalUnit,status:c.status,manual:c.manual,reason:c.reason,exclusions:c.exclusions})}return result}
+const api={version:'1.0.0',prefixes,stage,schema};root.StandardChannels=api;if(typeof module!=='undefined')module.exports=api;
+})(typeof globalThis!=='undefined'?globalThis:this);
