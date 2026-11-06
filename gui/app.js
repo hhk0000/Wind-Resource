@@ -1,10 +1,10 @@
 'use strict';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const names={overview:['项目信息','风资源评估，从清晰的项目边界开始。','项目、资料、分析与报告，围绕同一套可研论证逻辑协同。'],data:['数据中心','每一份输入，都有清晰的来源。','原始、删除标记、最终代表年与中尺度资料分阶段导入。'],analysis:['分析配置','为每一项分析，定义口径与边界。','配置测风年、长期基准、轮毂高度与处理路径。'],charts:['图表可视化中心','让每一个风参数，都清晰可见。','基础参数、长期代表性和轮毂成果，对应第2章的图表证据链。'],report:['报告预览','有依据的分析，形成可复核的报告。','10个标准章节、图表位置与人工待补项，在同一模板中组织。']};
+const names={overview:['项目管理','让每个项目，留下完整的研究档案。','从进行中的分析到已完成的归档，按项目组织资料与报告。'],data:['数据管理','每一份输入，都有清晰的来源。','原始、删除标记、最终代表年与中尺度资料分阶段导入。'],analysis:['分析配置','为每一项分析，定义口径与边界。','配置测风年、长期基准、轮毂高度与处理路径。'],charts:['图表可视化中心','让每一个风参数，都清晰可见。','基础参数、长期代表性和轮毂成果，对应第2章的图表证据链。'],report:['报告预览与导出','有依据的分析，形成可复核的报告。','10个标准章节、图表位置与人工待补项，在同一模板中组织。']};
 let years=20,chartType='monthly',parsed=null,localResult=null,config=null,chapter=0;
 const slots={raw:null,qc:null,final:null,mesoscale:null};
-const stages=['原始测风数据','删除标记数据','最终轮毂代表年','中尺度数据'];
+const stages=['原始测风数据','质控后测风数据','订正外推到轮毂高度的数据','中尺度数据'];
 const demo=[7.4,7.8,8.1,7.7,7.2,6.4,5.9,5.8,6.5,7.0,7.6,7.8];
 const chapters=['编制依据','区域与场址风能概况','参证气象站与长期参证资料','测风资料、质量与处理','基础风特征参数','长期代表性与订正','轮毂高度风资源特征','极端风速与机组安全要求','灾害与场址适应性','综合评价、限制与建议'];
 function toast(s){$('#toast').textContent=s;$('#toast').style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').style.display='none',3500)}

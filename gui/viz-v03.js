@@ -87,4 +87,4 @@ function arrangeChartPresentation(){
 const renderOrderedCharts=renderChart;
 renderChart=function(){renderOrderedCharts();arrangeChartPresentation()};
 chartType='longterm';
-metrics();renderSlots();windowPreview();renderReport();renderCatalog();navigate(location.hash.slice(1)||'overview');
+// Initialization continues in workspace-v04.js.
