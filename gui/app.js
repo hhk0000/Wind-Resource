@@ -81,4 +81,4 @@ renderReport=function(){originalRenderReport();$$('[data-report-graph]').forEach
 // The downloaded HTML is a static preview, so graph navigation buttons are omitted.
 const originalDownload=download;
 download=function(name,data,type){if(name==='风资源报告-未审原型.html')data=data.replace(/<div class="reportGraphLinks">([\s\S]*?)<\/div>/g,(_,html)=>'<ul>'+[...html.matchAll(/data-report-graph="[^"]+">([^<]+)<\/button>/g)].map(m=>'<li>'+m[1].replace(' ↗','')+'（图表位置待绑定）</li>').join('')+'</ul>');originalDownload(name,data,type)};
-metrics();renderSlots();windowPreview();renderReport();renderCatalog();navigate(location.hash.slice(1)||'overview');
+// Initialization is owned by viz-v03.js.

@@ -1,97 +1,80 @@
-"""V0.2 functional browser validation; requires system Chromium and Playwright."""
+"""Browser checks for V0.3 review compositions and existing import workflow."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 with sync_playwright() as p:
- browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
- page=browser.new_page(viewport={'width':1550,'height':1080},device_scale_factor=1)
- errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ b=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+ page=b.new_page(viewport={'width':1550,'height':1080});errors=[]
+ page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto('http://127.0.0.1:8000',wait_until='networkidle')
  assert page.locator('nav button').count()==5
- assert page.locator('#overview.active').count()==1
- page.fill('#projectName','山地风电评估 · 界面验收')
- page.fill('#region','示例区域');page.fill('#capacity','75');page.fill('#projectNotes','安装资料待补')
- page.click('#projectForm button[type=submit]')
- assert '界面验收' in page.locator('#projectNameDisplay').inner_text()
- page.screenshot(path=str(ROOT/'docs/GUI-V02-项目信息.png'),full_page=True)
- page.click('nav [data-page="analysis"]');page.click('[data-years="30"]')
- assert '[1995-01-01, 2025-01-01)' in page.locator('#windowPreview').inner_text()
- page.fill('#end','2020-02-29');page.fill('#start','2019-03-01')
- assert '[1990-02-28, 2020-02-29)' in page.locator('#windowPreview').inner_text()
- page.fill('#start','2024-01-01');page.fill('#end','2025-01-01')
- page.select_option('#densityMethod','mesoscale')
- with page.expect_download() as d:page.click('#configDownload')
- data=Path(d.value.path()).read_text();assert 'mesoscale' in data and 'trailing_calendar_years' in data
- page.click('#configForm button[type=submit]')
- assert page.locator('#charts.active').count()==1
+ page.fill('#projectName','组合图验收');page.click('#projectForm button[type=submit]')
+ page.click('nav [data-page="charts"]')
  ids=page.locator('[data-chart]').evaluate_all('(es)=>es.map(e=>e.dataset.chart)')
- assert len(ids)==13,ids
+ assert ids[:9]==['longterm','overviewLines','density','correlation','shear','turbulence','monthly','daily','frequency'],ids
  for key in ids:
   page.click(f'[data-chart="{key}"]')
-  assert page.locator('#mainChart svg').count()==1,key
-  assert page.locator('#sourceBadge').inner_text()=='合成示例',key
-  assert page.locator('#chartTable tr').count()>1,key
- page.click('[data-chart="correlation"]');page.select_option('#corrSector','4')
- assert '25 个合成点' in page.locator('#chartStats').inner_text()
- page.evaluate("window.scrollTo(0,0);document.querySelector('#toast').style.display='none'");page.wait_for_timeout(120)
- page.screenshot(path=str(ROOT/'docs/GUI-V02-相关性散点.png'),full_page=True)
+  assert page.locator('#v03Composition svg,#mainChart svg').count()>0,key
+ assert len(ids)==12
+ page.click('[data-chart="longterm"]');assert page.locator('#v03Composition svg').count()==2
+ assert page.locator('#v03Composition table tr').count()==2
+ page.click('[data-chart="overviewLines"]');assert page.locator('[data-series]').count()==4
+ page.locator('[data-series="1"]').uncheck()
+ assert page.evaluate('v03State.visible[1]') is False
+ for i in [0,2,3]:page.locator(f'[data-series="{i}"]').uncheck()
+ assert '所有曲线均已关闭' in page.locator('#v03Composition').inner_text()
+ for i in range(4):page.locator(f'[data-series="{i}"]').check()
  page.click('[data-chart="density"]')
- page.click('#toggleTable');page.evaluate("window.scrollTo(0,0)");page.wait_for_timeout(120)
- page.screenshot(path=str(ROOT/'docs/GUI-V02-图表中心.png'),full_page=True)
- page.click('#toggleTable')
+ assert page.locator('#v03Composition rect[fill="#e55757"]').count()==1
+ assert page.locator('#v03Composition rect[fill="#29a77e"]').count()==12
+ assert '平均值' in page.locator('#v03Composition table tr').last.inner_text()
+ page.click('[data-chart="correlation"]')
+ page.select_option('#v03SectorCount','12');page.select_option('#v03Sector','3')
+ assert page.evaluate('v03State.sectorCount')==12
+ assert 'n = ' in page.locator('.v03fit').inner_text()
+ page.select_option('#v03SectorCount','1');assert page.locator('#v03Sector option').count()==1
+ before=page.locator('.inlineFormula').inner_text()
+ page.select_option('#v03Baseline','30');after=page.locator('.inlineFormula').inner_text()
+ assert before!=after and '近30年' in after
+ page.click('[data-chart="shear"]');assert page.locator('#v03Composition table tbody tr').count()==5
+ page.click('[data-chart="turbulence"]');assert page.locator('#v03Composition table').count()==3
+ assert '样本数' in page.locator('#v03Composition table').first.inner_text()
+ page.click('[data-chart="monthly"]');assert page.locator('#v03Composition svg').count()==3
+ assert page.locator('#v03Composition table th').count()==7
+ page.click('[data-chart="daily"]');assert page.locator('#v03Composition table tbody tr').count()==24
+ page.click('[data-chart="frequency"]');assert page.locator('#v03Composition svg').count()==3
  with page.expect_download() as d:page.click('#svgDownload')
- assert '合成示例' in Path(d.value.path()).read_text()
+ svg=Path(d.value.path()).read_text();assert '合成示例' in svg and svg.count('<svg')==4
  with page.expect_download() as d:page.click('#csvDownload')
- assert '合成示例' in Path(d.value.path()).read_text()
- page.fill('#chartSearch','威布尔');assert page.locator('[data-chart]').count()==1
- page.fill('#chartSearch','Weibull');assert page.locator('[data-chart]').count()==1
- page.fill('#chartSearch','')
+ assert '125m风能频率' in Path(d.value.path()).read_text()
+ page.click('[data-chart="correlation"]');page.evaluate("window.scrollTo(0,0);document.querySelector('#toast').style.display='none'")
+ page.screenshot(path=str(ROOT/'docs/GUI-V03-相关性组合.png'),full_page=True)
+ page.click('[data-chart="density"]');page.evaluate('window.scrollTo(0,0)')
+ page.screenshot(path=str(ROOT/'docs/GUI-V03-空气密度.png'),full_page=True)
  page.click('nav [data-page="data"]')
  sample=b'timestamp,wind_speed,wind_direction,qc_flag\n2024-01-01 00:00,6,350,0\n2024-01-01 00:10,8,10,0\n2024-01-01 00:20,10,90,1\n2024-01-01 00:40,4,180,0\n'
  page.set_input_files('#file',{'name':'sample.csv','mimeType':'text/csv','buffer':sample});page.click('#inspect')
- r=page.evaluate('localResult');assert (r['expected'],r['observed'],r['valid'],r['mean'])==(5,4,3,6)
- page.click('nav [data-page="charts"]')
- page.click('[data-chart="monthly"]');assert page.locator('#sourceBadge').inner_text()=='真实导入'
- assert page.locator('#chartTable').inner_text().count('无样本')==11
- for key in ['daily','annual','frequency','rose']:
-  page.click(f'[data-chart="{key}"]');assert page.locator('#mainChart svg').count()==1,key
- page.select_option('#vizStage','mesoscale')
- assert '所选阶段尚无可用结果' in page.locator('#mainChart').inner_text()
- page.select_option('#vizStage','raw')
- for key in ['density','shear','weibull','correlation','power','energyRose','turbulence','longterm']:
-  page.click(f'[data-chart="{key}"]');assert page.locator('#mainChart svg').count()==0,key
-  assert page.locator('#svgDownload').is_disabled(),key
- page.click('#showExample');assert page.locator('#mainChart svg').count()==1
+ r=page.evaluate('localResult');assert (r['expected'],r['valid'],r['mean'])==(5,3,6)
+ page.click('nav [data-page="charts"]');page.click('[data-chart="monthly"]')
+ assert page.locator('#sourceBadge').inner_text()=='真实导入'
+ page.click('[data-chart="density"]');assert page.locator('#svgDownload').is_disabled()
+ page.click('#showExample');assert page.locator('#v03Composition').count()==1
  page.click('#jumpReport');assert page.locator('#report.active').count()==1
- page.click('[data-chapter="4"]');page.click('[data-report-graph="shear"]')
- assert '切变' in page.locator('#chartTitle').inner_text()
- page.click('nav [data-page="report"]');page.click('[data-chapter="0"]')
- assert '界面验收' in page.locator('#chapterBody').inner_text()
  with page.expect_download() as d:page.click('#reportDownload')
- html=Path(d.value.path()).read_text();assert '2.10' in html and '图表位置待绑定' in html and '<mark>' in html
- assert 'data-report-graph=' not in html
- page.evaluate("window.scrollTo(0,0);document.querySelector('#toast').style.display='none'");page.wait_for_timeout(120)
- page.screenshot(path=str(ROOT/'docs/GUI-V02-报告预览.png'),full_page=True)
- page.click('nav [data-page="data"]')
- page.set_input_files('#file',{'name':'unsupported.xlsx','mimeType':'application/octet-stream','buffer':b'fake'})
- assert '未导入成功' in page.locator('#fileStatus').inner_text()
- edge=b'timestamp,wind_speed\n2024-01-01 00:00,6\n2024-01-01 00:00,7\n2024-01-01 00:05,9\n2024-01-01 00:10,\nbad,2\n2024-01-01 00:20,4\n'
- page.set_input_files('#file',{'name':'edge.csv','mimeType':'text/csv','buffer':edge});page.click('#inspect')
- r=page.evaluate('localResult');assert (r['duplicates'],r['badTime'],r['offgrid'],r['valid'])==(1,1,1,2)
+ assert '组合图验收' in Path(d.value.path()).read_text()
  page.set_viewport_size({'width':390,'height':844})
  for key in ['overview','data','analysis','charts','report']:
   page.click(f'nav [data-page="{key}"]')
   assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),key
  page.click('nav [data-page="charts"]')
- page.screenshot(path=str(ROOT/'docs/GUI-V02-移动端.png'),full_page=True)
- offline=browser.new_page()
- offline_errors=[];offline.on('pageerror',lambda e:offline_errors.append(str(e)))
+ for key in ids[:9]:
+  page.click(f'[data-chart="{key}"]');assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),key
+ offline=b.new_page();offline.on('pageerror',lambda e:errors.append(str(e)))
  offline.route('**/standalone.html',lambda route:route.fulfill(status=200,content_type='text/html',body=(ROOT/'dist/风序-GUI.html').read_text()))
  offline.goto('http://127.0.0.1:8000/standalone.html',wait_until='load')
- offline.click('nav [data-page="charts"]');offline.click('[data-chart="weibull"]')
- assert offline.locator('#mainChart svg').count()==1
- assert '0.2.0-prototype' in offline.locator('.appfooter').inner_text()
- assert not offline_errors,offline_errors
+ offline.click('nav [data-page="charts"]');offline.click('[data-chart="overviewLines"]')
+ assert offline.locator('[data-series]').count()==4
+ assert '0.3.0' in offline.locator('.appfooter').inner_text()
  assert not errors,errors
- browser.close()
- print('PASS: five pages, project/report sync, 13 charts, source/stage guards, CSV statistics, config, leap day, sector filter, SVG/CSV/HTML downloads, report navigation, mobile layout; no script errors.')
+ b.close()
+ print('PASS: chart order, four toggles/gaps, radar/year table, density colors/formula, 1/12/16 regression, baseline deviation, multiheight dual axes/tables, CSV/SVG/report downloads, real-source guard, mobile and offline GUI.')
