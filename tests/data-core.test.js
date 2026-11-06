@@ -1,0 +1,34 @@
+'use strict';
+const assert=require('node:assert/strict');const W=require('../gui/data-core.js');
+(async()=>{
+ assert.equal(W.parseDate('2024-02-30 00:00'),NaN);
+ assert.equal(W.parseDate('2024-01-01 00:00:00.123'),Date.UTC(2023,11,31,16,0,0,123));
+ assert.equal(W.parseDate('2024-01-01 00:00'),Date.UTC(2023,11,31,16));
+ assert.equal(W.parseDate('2024-01-01T00:00:00Z'),Date.UTC(2024,0,1));
+ assert.equal(W.parseDate('31/12/2024 23:00',{format:'dmy'}),W.parseDate('2024-12-31 23:00'));
+ assert.equal(W.parseDate('12/11/2024 00:00',{format:'mdy'}),W.parseDate('2024-12-11 00:00'));
+ assert.ok(Number.isNaN(W.parseDate('2024-01-01T00:00:00+16:00')));
+ assert.equal(W.fmt(W.shiftYear(W.parseDate('2024-02-29 00:00'),-1)), '2023-02-28 00:00:00');
+ assert.equal(W.detect(['valid_time','u100','v100']).time,0);
+ assert.equal(W.detect(['Time (UTC)','WS_80m']).time,0);
+ const zone=await W.normalize(W.parseTable('time,WS_80m\n2024-01-01 00:00,6\n2024-01-01 01:00,8'),{file:'raw.csv',offset:8,inputOffset:0});assert.equal(W.fmt(zone.start,8),'2024-01-01 08:00:00');
+ const profile=W.detect(['Date','Time','WS_80m (m/s)','WD_80m','wind_speed_125m','QC']);
+ assert.equal(profile.time,0);assert.equal(profile.clock,1);assert.equal(profile.channels.length,2);assert.equal(profile.channels[0].height,80);
+ const t=W.parseTable('设备信息\n站点 T01\nDate,Time,WS_80m,WD_80m,QC\n2024-01-01,00:00,6,350,0\n2024-01-01,00:10,8,10,0\n2024-01-01,00:20,-999,90,1\n2024-01-01,00:40,4,180,0\n2024-01-01,00:40,99,0,0\n2024-02-30,00:00,2,0,0');
+ const d=await W.normalize(t,{file:'qc.csv'});assert.equal(d.stage,'qc');assert.equal(d.rows.length,4);assert.equal(d.diagnostics.duplicates,1);assert.equal(d.diagnostics.badTime,1);assert.equal(d.diagnostics.missing,1);assert.equal(d.diagnostics.invalid[0],1);
+ const agg=W.aggregate(d,{period:'day'});assert.equal(agg[0].mean,6);assert.equal(agg[0].n,3);
+ const uv=await W.normalize(W.parseTable('time,u100,v100\n2024-01-01 00:00,0,-10\n2024-01-01 01:00,-10,0'),{file:'ERA5.csv'});assert.equal(uv.channels[0].height,100);assert.equal(uv.rows[0].values[0].v,10);assert.equal(uv.rows[0].values[0].dir,0);assert.equal(uv.rows[1].values[0].dir,90);
+ const km=await W.normalize(W.parseTable('time,wind_speed_80m(km/h)\n2024-01-01 00:00,36\n2024-01-01 01:00,72'),{file:'raw.csv'});assert.equal(km.rows[0].values[0].v,10);
+ assert.throws(()=>W.parseTable('time,wind,wind\n2024-01-01,1,2'),/重复/);
+ await assert.rejects(W.normalize(W.parseTable('time,WS_80m\n2024-01-01 00:00,1\n2024-01-01 00:10,2\n2024-01-01 00:17,3'),{file:'raw.csv'}),/网格/);
+ const start=W.parseDate('2024-01-01 00:00'),end=W.parseDate('2025-01-01 00:00'),step=86400000,final={start,end,step,offset:8,expected:366,diagnostics:{missing:0,invalid:[0]}};
+ assert.equal(W.representativeYear(final).expected,366);
+ assert.throws(()=>W.representativeYear({...final,end:end-step}),/日历年/);
+ const mesoStart=W.parseDate('1995-01-01 00:00'),rows=[];for(let ts=mesoStart;ts<end;ts+=step)rows.push({ts,values:[{v:8,dir:270}]});const meso={start:mesoStart,end,step,offset:8,channels:[{height:100}],rows};
+ for(const n of [10,20,30]){const w=W.windowStats(meso,final,n);assert.equal(w.status,'complete');assert.equal(w.mean,8);assert.equal(w.annual.length,n);assert.equal(W.fmt(w.end),'2025-01-01 00:00:00');assert.equal(W.fmt(w.start),`${2025-n}-01-01 00:00:00`)}
+ const partial=W.windowStats({...meso,start:mesoStart+step,rows:rows.slice(1)},final,30);assert.equal(partial.status,'partial');assert.ok(partial.coverage<1);
+ const missingRow={...meso,rows:rows.filter((_,i)=>i!==500)};assert.equal(W.windowStats(missingRow,final,30).status,'partial');
+ assert.equal(W.windowStats(null,final,20).status,'missing');
+ assert.equal(W.channelIndex({channels:[{height:80},{height:125}]},'125'),1);
+ console.log('PASS: strict dates/timezones/leap years, encoding-independent table detection, split dates, heights, QC/nulls, duplicate diagnostics, U/V and km/h, exact representative year, 10/20/30-year anchors, incomplete coverage and grid validation.');
+})().catch(e=>{console.error(e);process.exitCode=1});

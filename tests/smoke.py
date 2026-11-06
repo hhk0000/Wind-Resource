@@ -52,7 +52,7 @@ with sync_playwright() as p:
   page.click(f'[data-chart="{key}"]');assert page.locator('#v03Composition svg,#mainChart svg').count()>0,key
   assert page.evaluate("""()=>{const r=document.querySelector('#v03Composition');if(!r)return true;const g=r.querySelector('svg'),t=r.querySelector('table'),rules=r.querySelector('.presentationRules');return !!rules&&(!t||(g.compareDocumentPosition(t)&Node.DOCUMENT_POSITION_FOLLOWING)&&(t.compareDocumentPosition(rules)&Node.DOCUMENT_POSITION_FOLLOWING));}"""),key
  page.click('[data-board="A"]');page.evaluate("window.scrollTo(0,0);document.querySelector('#toast').style.display='none'")
- page.screenshot(path=str(ROOT/'docs/GUI-V04-图表看板.png'),full_page=True)
+ page.screenshot(path=str(ROOT/'dist/验收-图表看板.png'),full_page=True)
  page.click('nav [data-page="data"]')
  sample=b'timestamp,wind_speed,wind_direction,qc_flag\n2024-01-01 00:00,6,350,0\n2024-01-01 00:10,8,10,0\n2024-01-01 00:20,10,90,1\n2024-01-01 00:40,4,180,0\n'
  page.set_input_files('#file',{'name':'sample.csv','mimeType':'text/csv','buffer':sample});page.click('#inspect')
@@ -77,7 +77,7 @@ with sync_playwright() as p:
  html=Path(d.value.path()).read_text();assert '归档验收' in html and '本地归档文字快照' in html
  assert page.locator('#reportType option:not([disabled])').count()==1
  page.click('nav [data-page="overview"]');page.evaluate("window.scrollTo(0,0);document.querySelector('#toast').style.display='none'")
- page.screenshot(path=str(ROOT/'docs/GUI-V04-项目档案.png'),full_page=True)
+ page.screenshot(path=str(ROOT/'dist/验收-项目档案.png'),full_page=True)
  page.click('#cloneProject');page.fill('#projectName','副本项目');page.click('#projectForm button[type=submit]')
  assert page.evaluate('projectRecords.length')==2
  assert page.evaluate("projectRecords.filter(r=>r.status==='completed').length")==1
@@ -92,6 +92,6 @@ with sync_playwright() as p:
  offline.route('**/standalone.html',lambda route:route.fulfill(status=200,content_type='text/html',body=(ROOT/'dist/风序-GUI.html').read_text()))
  offline.goto('http://127.0.0.1:8000/standalone.html',wait_until='load');offline.click('nav [data-page="charts"]')
  assert offline.locator('[data-board]').count()==4
- assert '0.4.0' in offline.locator('.appfooter').inner_text()
+ assert '0.5.0' in offline.locator('.appfooter').inner_text()
  assert not errors,errors
  b.close();print('PASS: five modules, project metadata/counts, archive/search/reload/clone, no cross-project data leak, A–D boards, preview height/time, optional station, regression range and empty samples, charts/tables/rules, export, imported statistics, mobile and offline GUI.')
