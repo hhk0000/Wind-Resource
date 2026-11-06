@@ -1,7 +1,8 @@
 /* Real time-series input and window calculations. No synthetic data or UI dependencies. */
 (function(root){
 'use strict';
-const YEAR_MS=366*86400000;
+const C=root.ChannelLibrary||(typeof require==='function'?require('./channel-library.js'):null);
+if(!C)throw Error('通道关键字库未加载');
 const num=x=>{const s=String(x??'').trim();return s===''?NaN:Number(s)};
 function dateParts(ms,offset=8){const d=new Date(ms+offset*3600000);return [d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate(),d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds()]}
 function makeDate(y,m,d,h=0,min=0,sec=0,offset=8){if(m<1||m>12||d<1||h<0||h>23||min<0||min>59||sec<0||sec>59)return NaN;const t=Date.UTC(y,m-1,d,h,min,sec);const q=new Date(t);return q.getUTCFullYear()===y&&q.getUTCMonth()===m-1&&q.getUTCDate()===d?t-offset*3600000:NaN}
@@ -16,30 +17,44 @@ function parseDate(value,{offset=8,excel=false,format='ymd'}={}){let s=String(va
 function shiftYear(ms,delta,offset=8){const p=dateParts(ms,offset),y=p[0]+delta,days=new Date(Date.UTC(y,p[1],0)).getUTCDate();return makeDate(y,p[1],Math.min(p[2],days),p[3],p[4],p[5],offset)+new Date(ms).getUTCMilliseconds()}
 function fmt(ms,offset=8){const p=dateParts(ms,offset);return `${p[0]}-${String(p[1]).padStart(2,'0')}-${String(p[2]).padStart(2,'0')} ${p.slice(3).map(x=>String(x).padStart(2,'0')).join(':')}`}
 function stageFromName(name){if(/meso|era5|merra|中尺度|再分析/i.test(name))return 'mesoscale';if(/final|hub|轮毂|最终|订正|外推/i.test(name))return 'final';if(/qc|clean|质控|标记|删除/i.test(name))return 'qc';if(/raw|origin|原始/i.test(name))return 'raw';return ''}
-function heightOf(s){let m=String(s).match(/(?:^|[^\d.])(\d{1,3}(?:\.\d+)?)\s*(?:m\b|米)/i);if(!m)m=String(s).match(/(?:ws|wd|speed|direction|风速|风向|^u|^v)[ _-]*(\d{1,3})(?:\D|$)/i);return m?+m[1]:null}
-function detect(headers,file=''){const channels=[],dirs=[],us=[],vs=[];let ti=-1,di=-1,clock=-1,flag=-1;
- headers.forEach((raw,i)=>{const h=String(raw).trim(),plain=h.toLowerCase().replace(/[()\[\]]/g,' '),height=heightOf(h)??heightOf(file);if(/^(time|timestamp|datetime|date.?time|时间戳|时间|日期时间)$/i.test(h)||/date.*time|^valid[_ ]time$|^timestamp[_ (]|^time(?:[ _(]|$)/i.test(h))ti=i;else if(/^(date|日期)$/i.test(h))di=i;else if(/^(hour|clock|时刻|时分秒)$/i.test(h))clock=i;if(/^(qc|flag|qc.flag|quality.flag|质量标记|删除标记)$/i.test(h))flag=i;
- if(/^(?:u|u[_ -]?wind|eastward[_ -]?wind)(?:[_ -]?\d+)?(?:\s|$)/i.test(plain))us.push({i,height});
- else if(/^(?:v|v[_ -]?wind|northward[_ -]?wind)(?:[_ -]?\d+)?(?:\s|$)/i.test(plain))vs.push({i,height});
- else if(/wind.?direction|direction|风向|^wd(?:[_ -]|\W|\d|$)/i.test(h)&&!/std|偏差|sigma/i.test(h))dirs.push({i,height,scale:/rad|弧度/i.test(h)?180/Math.PI:1});
- else if(/wind.?speed|speed|风速|^ws(?:[_ -]|\W|\d|$)/i.test(h)&&!/std|sigma|偏差|(?:^|[_ \b])(max|min)(?:$|[_ \b])|最大|最小|gust|阵风/i.test(h)){let scale=/km\s*\/?\s*h|kmh|千米/i.test(h)?1/3.6:1;channels.push({key:'c'+i,name:h,speed:i,height,scale,unit:/mph|节|knot/i.test(h)?'unsupported':'m/s'})}
- });
- if(di>=0&&ti>=0&&/^(time|时间)$/i.test(headers[ti])){clock=ti;ti=di;di=-1}else if(ti<0&&di>=0)ti=di;
- for(const u of us){const v=vs.find(v=>v.height===u.height);if(v)channels.push({key:'uv'+u.i,name:`U/V合成 ${u.height??'未识别'}m`,u:u.i,v:v.i,height:u.height,scale:1,unit:'m/s'})}
- channels.forEach(c=>{const dir=dirs.find(d=>d.height===c.height)||(dirs.length===1?dirs[0]:null);if(dir){c.direction=dir.i;c.dirScale=dir.scale;c.directionHeight=dir.height}});
- return {time:ti,clock,flag,channels};
+function heightOf(s){return C.heightInfo(s).height}
+function detect(headers,file='',overrides={}){
+ const catalog=C.identify(headers,file,overrides),accepted=catalog.filter(C.isAccepted);
+ let ti=-1,date=-1,clock=-1,flag=-1;
+ headers.forEach((h,i)=>{if(/^(time|timestamp|datetime|date.?time|时间戳|时间|日期时间)$/i.test(h)||/date.*time|^valid[_ ]time$|^timestamp[_ (]|^time(?:[ _(]|$)/i.test(h))ti=i;else if(/^(date|日期)$/i.test(h))date=i;else if(/^(hour|clock|时刻|时分秒)$/i.test(h))clock=i;if(/^(qc|flag|qc.flag|quality.flag|质量标记|删除标记)$/i.test(h))flag=i});
+ if(date>=0&&ti>=0&&/^(time|时间)$/i.test(headers[ti])){clock=ti;ti=date}else if(ti<0&&date>=0)ti=date;
+ const dirs=accepted.filter(c=>c.element==='wind_direction'&&c.statistic==='mean');
+ const means=accepted.filter(c=>c.element==='wind_speed'&&c.statistic==='mean');
+ const channels=means.map(c=>({key:'c'+c.index,name:c.header,speed:c.index,height:c.height,sensor:c.sensor,scale:c.scale,unit:'m/s',sourceUnit:c.sourceUnit||'待确认（界面默认m/s）',recognition:c}));
+ const warnings=[];
+ for(const u of accepted.filter(c=>c.element==='u_component'&&c.statistic==='mean')){
+  const vs=accepted.filter(c=>c.element==='v_component'&&c.statistic==='mean'&&c.height===u.height);
+  if(vs.length===1){const v=vs[0];channels.push({key:'uv'+u.index,name:`U/V合成 ${u.height??'未识别'}m`,u:u.index,v:v.index,height:u.height,scale:u.scale,vScale:v.scale,unit:'m/s',sourceUnit:u.sourceUnit||'待确认（默认m/s）',recognition:u})}else warnings.push(u.header+'的V分量缺失或不唯一');
+ }
+ for(const c of channels){
+  const same=dirs.filter(d=>d.height===c.height);let dir=same.length===1?same[0]:same.find(d=>d.sensor&&d.sensor===c.sensor);
+  if(!dir&&!same.length&&dirs.length===1)dir=dirs[0];
+  if(dir){c.direction=dir.index;c.dirScale=dir.scale;c.directionHeight=dir.height}else if(same.length>1)warnings.push(c.name+'匹配到多个风向通道，请人工指定');
+  for(const [stat,field]of [['std','stddevColumn'],['max','maximumColumn'],['min','minimumColumn']]){
+   let matches=accepted.filter(d=>d.element==='wind_speed'&&d.statistic===stat&&d.height===c.height);
+   if(c.sensor){const own=matches.filter(d=>d.sensor===c.sensor);if(own.length)matches=own}
+   if(matches.length===1){c[field]=matches[0].index;c[field.replace('Column','Scale')]=matches[0].canonicalUnit?matches[0].scale:c.scale;}else if(matches.length>1)warnings.push(c.name+'的'+C.labels[stat]+'通道不唯一，未自动绑定');
+  }
+ }
+ const parameterChannels=accepted.filter(c=>['temperature','pressure','humidity','voltage'].includes(c.element)).map(c=>({...c}));
+ return {time:ti,clock,flag,channels,catalog,parameterChannels,warnings,dictionaryVersion:C.version};
 }
 function parseTable(text){text=text.replace(/^\uFEFF/,'');const lines=text.split(/\r?\n/);let best=-1,score=-1,delimiter=',';for(let i=0;i<Math.min(lines.length,60);i++){const line=lines[i];for(const sep of ['\t',',',';']){const hs=line.split(sep).map(s=>s.replace(/^"|"$/g,'').trim()),d=detect(hs);const n=(d.time>=0?10:0)+(d.channels.length?10:0)+Math.min(hs.length,10);if(hs.length>1&&n>score){best=i;score=n;delimiter=sep}}}if(best<0)throw Error('无法识别表头或分隔符；请使用带时间列和风速列的CSV/TXT。');
  const input=lines.slice(best).join('\n');let rows=[],row=[],cell='',quote=false;
  for(let i=0;i<input.length;i++){const c=input[i];if(c==='"'){if(quote&&input[i+1]==='"'){cell+='"';i++}else quote=!quote}else if(c===delimiter&&!quote){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quote){if(c==='\r'&&input[i+1]==='\n')i++;row.push(cell);if(row.some(v=>v.trim()))rows.push(row);row=[];cell=''}else cell+=c}
  if(quote)throw Error('文件存在未闭合的引号。');row.push(cell);if(row.some(v=>v.trim()))rows.push(row);if(rows.length<2)throw Error('文件没有数据行。');if(rows.length>1000001)throw Error('单文件最多100万行，请分批或转换为小时中尺度序列。');const headers=rows.shift().map(s=>s.trim());if(new Set(headers).size!==headers.length||headers.some(s=>!s))throw Error('表头列名不能为空或重复。');return {headers,rows,preambleLines:best,delimiter};
 }
-async function normalize(table,{file,stage='',offset=8,inputOffset=offset,format='ymd',defaultHeight=null,validFlags=['0','valid','good'],mapping=null,excel=false}={}){const map=mapping||detect(table.headers,file);if(map.time<0)throw Error('时间列未识别，请手动指定。');if(!map.channels.length)throw Error('风速通道未识别，请手动映射风速列。');if(map.channels.some(c=>c.unit==='unsupported'))throw Error('风速单位未支持，请先转换为m/s。');const channels=map.channels.map(c=>({...c,height:c.height??(defaultHeight!==null&&defaultHeight!==''?Number(defaultHeight):null)}));let badTime=0,malformed=0,duplicates=0;const seen=new Set(),rows=[],grids=new Set();
+async function normalize(table,{file,stage='',offset=8,inputOffset=offset,format='ymd',defaultHeight=null,validFlags=['0','valid','good'],mapping=null,excel=false}={}){const map=mapping||detect(table.headers,file);if(map.time<0)throw Error('时间列未识别，请手动指定。');if(!map.channels.length)throw Error('风速通道未识别，请手动映射风速列。');if(map.channels.some(c=>c.unit==='unsupported'))throw Error('风速单位未支持，请先转换为m/s。');const parameterChannels=map.parameterChannels||[];const channels=map.channels.map(c=>({...c,height:c.height??(defaultHeight!==null&&defaultHeight!==''?Number(defaultHeight):null)}));let badTime=0,malformed=0,duplicates=0;const seen=new Set(),rows=[],grids=new Set();
  const lat=table.headers.findIndex(h=>/^(lat|latitude|纬度)$/i.test(h)),lon=table.headers.findIndex(h=>/^(lon|longitude|经度)$/i.test(h));
- for(let i=0;i<table.rows.length;i++){const row=table.rows[i];if(row.length!==table.headers.length){malformed++;continue}if(lat>=0&&lon>=0)grids.add(row[lat]+','+row[lon]);const timeValue=excel&&map.clock>=0&&Number.isFinite(num(row[map.time]))&&Number.isFinite(num(row[map.clock]))?num(row[map.time])+num(row[map.clock]):String(row[map.time])+(map.clock>=0?' '+row[map.clock]:'');const ts=parseDate(timeValue,{offset:inputOffset,format,excel});if(!Number.isFinite(ts)){badTime++;continue}if(seen.has(ts)){duplicates++;continue}seen.add(ts);const flag=map.flag<0||validFlags.includes(String(row[map.flag]).trim().toLowerCase());const values=channels.map(c=>{let speed=c.u!==undefined?Math.hypot(num(row[c.u]),num(row[c.v]))*(c.scale||1):num(row[c.speed])*c.scale;let dir=c.u!==undefined?(Math.atan2(-num(row[c.u]),-num(row[c.v]))*180/Math.PI+360)%360:c.direction!==undefined?num(row[c.direction])*(c.dirScale||1):NaN;if(!Number.isFinite(dir)||dir<0||dir>360)dir=null;if(!flag||!Number.isFinite(speed)||speed<0)speed=null;return {v:speed,dir:dir===360?0:dir}});rows.push({ts,values});if(i&&i%25000===0)await new Promise(r=>setTimeout(r,0))}
+ for(let i=0;i<table.rows.length;i++){const row=table.rows[i];if(row.length!==table.headers.length){malformed++;continue}if(lat>=0&&lon>=0)grids.add(row[lat]+','+row[lon]);const timeValue=excel&&map.clock>=0&&Number.isFinite(num(row[map.time]))&&Number.isFinite(num(row[map.clock]))?num(row[map.time])+num(row[map.clock]):String(row[map.time])+(map.clock>=0?' '+row[map.clock]:'');const ts=parseDate(timeValue,{offset:inputOffset,format,excel});if(!Number.isFinite(ts)){badTime++;continue}if(seen.has(ts)){duplicates++;continue}seen.add(ts);const flag=map.flag<0||validFlags.includes(String(row[map.flag]).trim().toLowerCase());const values=channels.map(c=>{let speed=c.u!==undefined?Math.hypot(num(row[c.u])*(c.scale||1),num(row[c.v])*(c.vScale??c.scale??1)):num(row[c.speed])*c.scale;let dir=c.u!==undefined?(Math.atan2(-num(row[c.u]),-num(row[c.v]))*180/Math.PI+360)%360:c.direction!==undefined?num(row[c.direction])*(c.dirScale||1):NaN;if(!Number.isFinite(dir)||dir<0||dir>360)dir=null;if(!flag||!Number.isFinite(speed)||speed<0)speed=null;const value={v:speed,dir:dir===360?0:dir};for(const [column,key]of [['stddevColumn','stddev'],['maximumColumn','maximum'],['minimumColumn','minimum']])if(c[column]!==undefined){const n=num(row[c[column]]);value[key]=flag&&Number.isFinite(n)&&n>=0?n*(c[column.replace('Column','Scale')]??c.scale):null}return value});const record={ts,values};if(parameterChannels.length)record.parameters=parameterChannels.map(c=>{const n=num(row[c.index]);return flag&&Number.isFinite(n)&&!(c.statistic==='std'&&n<0)?n*c.scale+(c.statistic==='std'?0:c.offset):null});rows.push(record);if(i&&i%25000===0)await new Promise(r=>setTimeout(r,0))}
  if(grids.size>1)throw Error('检测到多个经纬度格点，请先选择单个中尺度格点导出，不能混合为同一序列。');if(!rows.length)throw Error('没有有效时间戳，请检查日期格式和时区。');rows.sort((a,b)=>a.ts-b.ts);const counts=new Map();for(let i=1;i<rows.length;i++){const d=rows[i].ts-rows[i-1].ts;if(d>0&&d<=86400000)counts.set(d,(counts.get(d)||0)+1)}const step=[...counts].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0]?.[0];if(!step)throw Error('无法可靠推断采样步长；至少需要两个相邻记录。');const start=rows[0].ts,end=rows.at(-1).ts+step,expected=Math.round((end-start)/step),offgrid=rows.filter(r=>(r.ts-start)%step!==0).length;
  if(offgrid)throw Error(`发现${offgrid}条不在推断时间网格上的记录，请先统一采样间隔。`);
- return {file,stage:stage||stageFromName(file),offset,channels,rows,step,start,end,expected,diagnostics:{badTime,malformed,duplicates,missing:Math.max(0,expected-rows.length),invalid:channels.map((_,j)=>rows.filter(r=>r.values[j].v===null).length)},mapping:map};
+ return {file,stage:stage||stageFromName(file),offset,channels,rows,step,start,end,expected,diagnostics:{badTime,malformed,duplicates,missing:Math.max(0,expected-rows.length),invalid:channels.map((_,j)=>rows.filter(r=>r.values[j].v===null).length)},mapping:map,catalog:map.catalog||[],parameterChannels,dictionaryVersion:map.dictionaryVersion||null};
 }
 function representativeYear(final){if(!final)throw Error('尚未导入最终轮毂高度数据，无法确定测风年锚点。');const target=shiftYear(final.start,1,final.offset);if(final.end!==target)throw Error(`最终数据需恰好覆盖一个日历年：[${fmt(final.start,final.offset)}, ${fmt(target,final.offset)})；当前结束为${fmt(final.end,final.offset)}。`);return {start:final.start,end:target,offset:final.offset,expected:final.expected,missing:final.diagnostics.missing,invalid:final.diagnostics.invalid}}
 function channelIndex(ds,key){if(key==='auto'||key===undefined)return 0;const idx=ds.channels.findIndex(c=>String(c.height)===String(key));return idx}

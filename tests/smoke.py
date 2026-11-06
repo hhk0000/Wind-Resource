@@ -92,6 +92,6 @@ with sync_playwright() as p:
  offline.route('**/standalone.html',lambda route:route.fulfill(status=200,content_type='text/html',body=(ROOT/'dist/风序-GUI.html').read_text()))
  offline.goto('http://127.0.0.1:8000/standalone.html',wait_until='load');offline.click('nav [data-page="charts"]')
  assert offline.locator('[data-board]').count()==4
- assert '0.5.0' in offline.locator('.appfooter').inner_text()
+ assert '0.6.0' in offline.locator('.appfooter').inner_text()
  assert not errors,errors
  b.close();print('PASS: five modules, project metadata/counts, archive/search/reload/clone, no cross-project data leak, A–D boards, preview height/time, optional station, regression range and empty samples, charts/tables/rules, export, imported statistics, mobile and offline GUI.')

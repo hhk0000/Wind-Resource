@@ -49,9 +49,9 @@ with TemporaryDirectory(prefix='wind-input-') as temp:
   assert page.evaluate('currentRows.length')==8784
   assert page.evaluate('currentRows[0][1]')=='6.000'
   page.click('nav [data-page="data"]');page.evaluate("window.scrollTo(0,0);document.querySelector('#toast').style.display='none'")
-  page.screenshot(path=str(ROOT/'docs/GUI-V05-真实文件识别.png'),full_page=True)
+  page.screenshot(path=str(ROOT/'dist/验收-真实文件识别.png'),full_page=True)
   page.click('nav [data-page="charts"]');page.select_option('#previewSource','mesoscale');page.evaluate('window.scrollTo(0,0)')
-  page.screenshot(path=str(ROOT/'docs/GUI-V05-真实概览.png'),full_page=True)
+  page.screenshot(path=str(ROOT/'dist/验收-真实概览.png'),full_page=True)
   # XLSX CRC/deflate/shared-or-inline strings and numeric Excel date handling, multiple sheets.
   page.click('nav [data-page="data"]');page.set_input_files('#realFiles',str(xlsx))
   page.wait_for_function('importEntries.length===1&&!importBusy',timeout=30000)

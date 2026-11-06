@@ -74,3 +74,11 @@ V0.4界面编排位于gui/workspace-v04.js。原架构方案未改写。
 详细规则、限制与实际样本待办见[数据输入与识别](docs/数据输入与识别.md)。此轮未收到用户测风附件，当前验证使用独立生成测试集。
 
 检查命令：`node tests/data-core.test.js`；启动GUI服务后`python tests/data-browser.py`验收实际导入、数值与绘图，`python tests/smoke.py`检查既有功能。单文件网页仍通过`python tools/export_standalone.py`生成。客户数据仅在浏览器内存，不上传Git或云端。
+
+## 当前开发模块：V0.6关键字通道识别
+
+已嵌入用户提供的关键字/排除词库，按“参数类型 × 高度 × 统计量”识别每列。数据管理可查看规则、导出JSON，并在每个文件的逐列识别表修正要素、统计量和高度。只有已确认的均值风速进入概览，标准差/极值分别保留；温度、气压、湿度、电压按通道与高度提取，排除项不自动使用。
+
+详细优先级、匹配例子、单位、数据结构和限制见[通道关键字识别](docs/通道关键字识别.md)。规则模块为`gui/channel-library.js`；可直接复用的接口是`ChannelLibrary.identify()`和`WindData.detect()`。仅新增识别与数值保留，没有宣称空气密度/湍流引擎已实现。
+
+新增检查：`node tests/channel-library.test.js`、`python tests/channel-browser.py`；既有核心、四文件导入与看板测试继续运行。截图使用生成数据，不包含客户原件。

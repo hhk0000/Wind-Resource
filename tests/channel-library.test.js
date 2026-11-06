@@ -1,0 +1,37 @@
+'use strict';
+const assert=require('node:assert/strict');const C=require('../gui/channel-library.js');const W=require('../gui/data-core.js');
+function check(h,element,stat='mean',status='recognized'){const r=C.identifyOne(h);assert.equal(r.element,element,h+' element: '+r.reason);assert.equal(r.statistic,stat,h+' statistic');assert.equal(r.status,status,h+' status: '+r.reason);return r}
+(async()=>{
+ for(const h of ['WS_80m_Avg','Spd80m Mean','Anemometer 1 80m','anem 80m','sp 80m (m/s)','风速 80米 平均值','WindSpeed125m'])check(h,'wind_speed');
+ for(const h of ['Wind Direction 80m Mean (deg)','Windvane80m','Dir 80m','vane_80m','WD_80m','风向80米'])check(h,'wind_direction');
+ for(const h of ['Temp_10m_Avg (°C)','Tmp_10m','TP 10m','外温10m','温度10米','tem_10m','Ta_10m','Sensor_10m_C'])check(h,'temperature');
+ for(const h of ['Pres_10m','Pressure 10m hPa','bp 10m','press 10m','pr_10m','气压10米'])check(h,'pressure');
+ for(const h of ['RH_10m (%)','humidity10m','hr_10m','hum_10m','humi_10m','湿度10米'])check(h,'humidity');
+ for(const h of ['Voltage 10m','Volt 10m','V 10m'])check(h,'voltage');
+ for(const h of ['WindSpeed 80m SD','WS80m STD','Spd 80m STDev','水平风速标准差 80m','WS 80m Deviation'])check(h,'wind_speed','std');
+ check('WS_80m_stddev','wind_speed','std');check('风速80米标准差','wind_speed','std');check('VWindSpeed Pressure','wind_speed','mean','excluded');
+ check('WS_80m_Avg_10min','wind_speed');assert.equal(C.heightInfo('WS10min').height,null);
+ check('WS80m Maximum','wind_speed','max');check('WS 80m 最大值','wind_speed','max');check('最大风速80米','wind_speed','max');check('WS80m Min','wind_speed','min');check('WS 80m Gust Avg','wind_speed','gust');
+ for(const h of ['VWindSpeed80m','vertical WindSpeed80m','Z-wind speed 80m','WindSpeed80m TI'])check(h,'wind_speed','mean','excluded');
+ const dir=C.identifyOne('Wind Direction 80m °C');assert.notEqual(dir.element,'wind_direction');
+ for(const h of ['Inner Temperature 10m','Int Temp 10m','PTemp10m'])check(h,'temperature','mean','excluded');
+ check('Humidity Data Availability 10m (%)','humidity','mean','excluded');check('Reliability (%)','humidity','mean','excluded');
+ check('Voltage Avg','voltage','mean','excluded');check('Voltage STDev','voltage','std','excluded');check('Voltage Valid','voltage','mean','excluded');
+ check('Pressure Std 10m','pressure','std');check('Temperature SD 10m','temperature','std');check('SD_80m','unknown','std','ambiguous');
+ for(const h of ['spreadsheet','other','valid','level','version','capacity','System','hours'])assert.equal(C.identifyOne(h).status,'unrecognized',h);
+ assert.equal(C.heightInfo('Anemometer 1 Avg').height,null);assert.equal(C.heightInfo('Channel 12 WS 80m').height,80);assert.equal(C.heightInfo('WS 80m / 100m').height,null);
+ assert.equal(C.identifyOne('wind speed Avg Max Min 80m').status,'ambiguous');
+ assert.equal(C.unitInfo('Pressure hPa','pressure').scale,100);assert.equal(C.unitInfo('Pressure10m_hPa','pressure').scale,100);assert.equal(C.identifyOne('Pressure10m_hPa').height,10);assert.equal(C.unitInfo('Pressure kPa','pressure').scale,1000);
+ assert.equal(C.unitInfo('Temperature °C','temperature').offset,273.15);assert.equal(C.unitInfo('Temperature K','temperature').canonicalUnit,'K');
+ const headers=['timestamp','Anemometer 1 80m Avg (m/s)','Anemometer 1 80m SD (m/s)','Anemometer 1 80m Max (m/s)','Anemometer 1 80m Min (m/s)','Anemometer 2 100m Avg (m/s)','WD_80m_Avg (deg)','Temp_10m_Avg (°C)','Pres_10m_Avg (hPa)','RH_10m_Avg (%)','Pressure SD 10m (hPa)','Voltage Avg','TI_80m','WS_80m_Max'];
+ const detected=W.detect(headers);assert.equal(detected.channels.length,2);assert.equal(detected.channels[0].stddevColumn,2);assert.equal(detected.channels[0].maximumColumn,3);assert.equal(detected.parameterChannels.length,4);assert.equal(detected.channels[0].sensor,'sensor-1');
+ const rows=[['2024-01-01 00:00','6','1','9','2','7','270','20','1000','50','2','12','0.1','99'],['2024-01-01 01:00','8','2','11','3','9','90','21','990','60','3','13','0.2','98']];
+ const ds=await W.normalize({headers,rows},{file:'raw.csv'});
+ assert.equal(ds.rows[0].values[0].v,6);assert.equal(ds.rows[0].values[0].stddev,1);assert.equal(ds.rows[0].values[0].maximum,9);
+ assert.equal(ds.rows[0].parameters[0],293.15);assert.equal(ds.rows[0].parameters[1],100000);assert.equal(ds.rows[0].parameters[2],.5);assert.equal(ds.rows[0].parameters[3],200);
+ assert.equal(ds.catalog.length,headers.length);assert.equal(ds.dictionaryVersion,C.version);
+ const multi=await W.normalize(W.parseTable('time,WS80m,Temp10m_°C,Temp80m_°C,Pressure10m_hPa,RH80m_%\n2024-01-01 00:00,6,20,-2,1000,50\n2024-01-01 01:00,7,21,-1,999,60'),{file:'raw.csv'});assert.deepEqual(multi.parameterChannels.map(c=>c.height),[10,80,10,80]);assert.deepEqual(multi.rows[0].parameters,[293.15,271.15,100000,.5]);
+ const override=W.detect(['time','CustomValue'], '',{1:{element:'wind_speed',statistic:'mean',height:125}});assert.equal(override.channels[0].height,125);assert.equal(override.catalog[1].manual,true);
+ const excluded=C.identifyOne('WindSpeed80m TI',0,'',{element:'wind_speed',statistic:'mean'});assert.equal(excluded.manual,true);assert.ok(excluded.exclusions.length);
+ console.log('PASS: all dictionary categories, exclusions, short-token false-positive protection, height/statistic separation, sensor companion selection, SI units, auxiliary values and manual override audit.');
+})().catch(e=>{console.error(e);process.exitCode=1});
