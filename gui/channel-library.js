@@ -1,7 +1,7 @@
 /* Versioned channel dictionary transcribed from the user's visible keyword table. */
 (function(root){
 'use strict';
-const version='1.0.0';
+const version='1.1.0';
 const rules=[
  {id:'wind_speed',label:'风速',keywords:['speed','spd','WS','anemometer','m/s','风速','anem','sp'],exclude:['z方向','垂直','Z-Direction','Z-wind','vertical','VWindSpeed','TI']},
  {id:'wind_direction',label:'风向',keywords:['direction','Windvane','Dir','vane','WD','deg','°','º','风向'],exclude:['℃','°C','□C','Z-Direction','degree C']},
@@ -9,6 +9,7 @@ const rules=[
  {id:'pressure',label:'气压',keywords:['Pres','Pa','mb','bp','气压','hPa','press','kpa','pressure','pr'],exclude:[]},
  {id:'humidity',label:'湿度',keywords:['humidity','rh','hr','%','hum','湿度','humi'],exclude:['可靠性','数据有效率','Reliability','Data Availability']},
  {id:'voltage',label:'电压',keywords:['v','volt','voltage'],exclude:['Avg','STDev','Deviation','Valid','Level','Data Availability','ver']},
+ {id:'wind_power_density',label:'风功率密度',keywords:['WPD','power density','风功率密度','W/m2','W/m²'],exclude:[]},
  {id:'std',label:'标准差',keywords:['SD','STD','偏差','STDev','StdDev','standard deviation','标准差','标准偏差','水平风速标准差','Std','Deviation','sigma'],exclude:['Pressure','Temperature']},
  {id:'mean',label:'平均值',keywords:['mean','Avg'],exclude:['gust','Gust']},
  {id:'max',label:'最大值',keywords:['最大值','Maximum','Max','最大'],exclude:[]},
@@ -28,11 +29,12 @@ function hit(header,key){let h=normalize(header);const k=normalize(key);if(k==='
 }
 function matched(h,list){return [...new Set(list.filter(k=>hit(h,k)))]}
 function heightInfo(header,file=''){const h=normalize(header).replace(/(\d),(\d+)\s*(m|米)/g,'$1.$2$3');const explicit=[...h.matchAll(/(?:^|[^\d.])(\d{1,3}(?:\.\d+)?)\s*(?:m(?=$|[^a-z])|米)/g)].map(m=>+m[1]);const unique=[...new Set(explicit)];if(unique.length===1)return {height:unique[0],heightSource:'表头显式高度'};if(unique.length>1)return {height:null,heightSource:'表头存在多个高度，需确认'};
- const m=h.match(/(?:^|[^a-z])(?:ws|wd|spd|speed|direction|anemometer|anem|temperature|temp|pressure|pres|humidity|rh|voltage|u|v)[ _-]?(\d{1,3}(?:\.\d+)?)(?![\d.]|\s*(?:min|sec|hz))(?:$|[^\d])/);if(m&&+m[1]>=5)return {height:+m[1],heightSource:'紧凑通道名推断，需核对'};
+ const m=h.match(/(?:^|[^a-z])(?:ws|wd|wpd|spd|speed|direction|anemometer|anem|temperature|temp|pressure|pres|humidity|rh|voltage|u|v)[ _-]?(\d{1,3}(?:\.\d+)?)(?![\d.]|\s*(?:min|sec|hz))(?:$|[^\d])/);if(m&&+m[1]>=5)return {height:+m[1],heightSource:'紧凑通道名推断，需核对'};
  const f=String(file).match(/(?:^|[^\d.])(\d{1,3}(?:\.\d+)?)\s*(?:m(?=$|[^a-z])|米)/i);return f?{height:+f[1],heightSource:'文件名推断，需核对'}:{height:null,heightSource:'未提供高度，不以通道号代替'};
 }
 function unitInfo(h,element){const s=normalize(h),clean=s.replace(/\s/g,'');let sourceUnit=null,canonicalUnit=null,scale=1,offset=0;
  if(['wind_speed','u_component','v_component'].includes(element)){canonicalUnit='m/s';if(/km\/?h|kmh|千米/.test(clean)){sourceUnit='km/h';scale=1/3.6}else if(/mph/.test(s)){sourceUnit='mph';scale=.44704}else if(/knot|节/.test(s)){sourceUnit='knot';scale=.514444}else if(/m\/s|mps|米\/秒/.test(clean))sourceUnit='m/s';else canonicalUnit=null}
+ if(element==='wind_power_density'){if(/w\/m2|w\/m²/i.test(clean)){sourceUnit='W/m²';canonicalUnit='W/m²'}}
  if(element==='wind_direction'){canonicalUnit='deg';if(/rad|弧度/.test(s)){sourceUnit='rad';scale=180/Math.PI}else if(/deg|°|度/.test(s)&&!/°\s*c|degree\s*c/.test(s))sourceUnit='deg';else canonicalUnit=null}
  if(element==='temperature'){if(/°\s*c|degree\s*c|(?:^|[_\s])c(?:$|[_\s\]])/.test(s)){sourceUnit='°C';canonicalUnit='K';offset=273.15}else if(/(?:^|[\s\[(])k(?:$|[\s\])])|kelvin/.test(s)){sourceUnit='K';canonicalUnit='K'}}
  if(element==='pressure'){if(hit(s,'kpa')){sourceUnit='kPa';scale=1000}else if(hit(s,'hpa')||hit(s,'mb')){sourceUnit=hit(s,'mb')?'mb':'hPa';scale=100}else if(hit(s,'pa'))sourceUnit='Pa';if(sourceUnit)canonicalUnit='Pa'}
@@ -43,7 +45,7 @@ function unitInfo(h,element){const s=normalize(h),clean=s.replace(/\s/g,'');let 
 function sensor(header){const h=normalize(header);const m=h.match(/(?:channel|ch|sensor|通道|anemometer|anem)\s*[_#: -]?(\d+)\b/);return m?'sensor-'+m[1]:null}
 function vectorElement(header){const h=normalize(header).replace(/\[[^\]]*\]|\([^)]*\)/g,'').trim();if(/^(u|eastward[ _-]?wind|u[ _-]?wind)(?:[ _-]?\d+(?:m)?)?$/i.test(h))return 'u_component';if(/^v[_-]?\d+(?:m)?$/i.test(h)||/^(northward[ _-]?wind|v[ _-]?wind)(?:[ _-]?\d+(?:m)?)?$/i.test(h))return 'v_component';return null}
 function identifyOne(header,index=0,file='',override=null){const height=heightInfo(header,file),evidence={},rejections={};for(const rule of rules){evidence[rule.id]=matched(header,rule.keywords);rejections[rule.id]=matched(header,rule.exclude)}
- const vector=vectorElement(header),physical=rules.slice(0,6),valid=physical.filter(r=>evidence[r.id].length&&!rejections[r.id].length);let element='unknown',status='unrecognized',reason='',confidence='未识别';
+ const vector=vectorElement(header),physical=rules.filter(r=>['wind_speed','wind_direction','wind_power_density','temperature','pressure','humidity','voltage'].includes(r.id)),valid=physical.filter(r=>evidence[r.id].length&&!rejections[r.id].length);let element='unknown',status='unrecognized',reason='',confidence='未识别';
  const explicitStats=['std','max','min'].filter(id=>evidence[id].length);let statistic=explicitStats.includes('std')?'std':explicitStats.length===1?explicitStats[0]:explicitStats.length>1?'ambiguous':matched(header,['gust','阵风']).length?'gust':'mean';
  const statisticSource=explicitStats.length||evidence.mean.length||statistic==='gust'?'显式统计量':'无统计量后缀，按均值候选';
  if(evidence.wind_speed.length&&rejections.wind_speed.length){element='wind_speed';status='excluded';confidence='已排除';reason='按风速排除词忽略：'+rejections.wind_speed.join('、')}

@@ -54,11 +54,11 @@ with sync_playwright() as p:
  page.click('[data-board="A"]');page.evaluate("window.scrollTo(0,0);document.querySelector('#toast').style.display='none'")
  page.screenshot(path=str(ROOT/'dist/验收-图表看板.png'),full_page=True)
  page.click('nav [data-page="data"]')
- sample=b'timestamp,wind_speed,wind_direction,qc_flag\n2024-01-01 00:00,6,350,0\n2024-01-01 00:10,8,10,0\n2024-01-01 00:20,10,90,1\n2024-01-01 00:40,4,180,0\n'
- page.set_input_files('#file',{'name':'sample.csv','mimeType':'text/csv','buffer':sample});page.click('#inspect')
- assert page.evaluate('localResult.mean')==6
+ sample=b'timestamp,wind_speed_125m,wind_direction_125m,qc_flag\n2024-01-01 00:00,6,350,0\n2024-01-01 00:10,8,10,0\n2024-01-01 00:20,10,90,1\n2024-01-01 00:40,4,180,0\n'
+ page.set_input_files('[data-single-stage="raw"]',{'name':'sample.csv','mimeType':'text/csv','buffer':sample});page.wait_for_function('realDatasets.raw!==null')
+ assert page.evaluate('WindData.aggregate(realDatasets.raw,{period:"day"})[0].mean')==6
  page.click('nav [data-page="charts"]');page.click('[data-board="D"]');page.click('[data-chart="monthly"]')
- page.select_option('#chartSource','imported');assert page.locator('#sourceBadge').inner_text()=='真实导入'
+ page.select_option('#chartSource','imported');assert page.locator('#svgDownload').is_disabled()
  page.click('nav [data-page="overview"]');page.click('#completeProject')
  assert page.evaluate("projectRecords[0].status")=='completed'
  assert page.locator('#completeProject').is_disabled()
@@ -71,7 +71,7 @@ with sync_playwright() as p:
  page.click('nav [data-page="overview"]');assert page.locator('[data-open-project]').count()==1
  page.click('[data-open-project]');assert page.locator('#report.active').count()==1
  assert page.locator('#turbineCount').is_disabled()
- assert page.evaluate('localResult') is None
+ assert page.evaluate('Object.values(realDatasets).every(x=>x===null)')
  assert '本地归档' in page.locator('#reportArchiveTag').inner_text()
  with page.expect_download() as d:page.click('#reportDownload')
  html=Path(d.value.path()).read_text();assert '归档验收' in html and '本地归档文字快照' in html
@@ -92,6 +92,6 @@ with sync_playwright() as p:
  offline.route('**/standalone.html',lambda route:route.fulfill(status=200,content_type='text/html',body=(ROOT/'dist/风序-GUI.html').read_text()))
  offline.goto('http://127.0.0.1:8000/standalone.html',wait_until='load');offline.click('nav [data-page="charts"]')
  assert offline.locator('[data-board]').count()==4
- assert '0.6.0' in offline.locator('.appfooter').inner_text()
+ assert '0.7.0' in offline.locator('.appfooter').inner_text()
  assert not errors,errors
  b.close();print('PASS: five modules, project metadata/counts, archive/search/reload/clone, no cross-project data leak, A–D boards, preview height/time, optional station, regression range and empty samples, charts/tables/rules, export, imported statistics, mobile and offline GUI.')

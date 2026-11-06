@@ -41,7 +41,7 @@ function detect(headers,file='',overrides={}){
    if(matches.length===1){c[field]=matches[0].index;c[field.replace('Column','Scale')]=matches[0].canonicalUnit?matches[0].scale:c.scale;}else if(matches.length>1)warnings.push(c.name+'的'+C.labels[stat]+'通道不唯一，未自动绑定');
   }
  }
- const parameterChannels=accepted.filter(c=>['temperature','pressure','humidity','voltage'].includes(c.element)).map(c=>({...c}));
+ const parameterChannels=accepted.filter(c=>['wind_power_density','temperature','pressure','humidity','voltage'].includes(c.element)).map(c=>({...c}));
  return {time:ti,clock,flag,channels,catalog,parameterChannels,warnings,dictionaryVersion:C.version};
 }
 function parseTable(text){text=text.replace(/^\uFEFF/,'');const lines=text.split(/\r?\n/);let best=-1,score=-1,delimiter=',';for(let i=0;i<Math.min(lines.length,60);i++){const line=lines[i];for(const sep of ['\t',',',';']){const hs=line.split(sep).map(s=>s.replace(/^"|"$/g,'').trim()),d=detect(hs);const n=(d.time>=0?10:0)+(d.channels.length?10:0)+Math.min(hs.length,10);if(hs.length>1&&n>score){best=i;score=n;delimiter=sep}}}if(best<0)throw Error('无法识别表头或分隔符；请使用带时间列和风速列的CSV/TXT。');
