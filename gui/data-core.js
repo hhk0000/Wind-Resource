@@ -44,10 +44,26 @@ function detect(headers,file='',overrides={}){
  const parameterChannels=accepted.filter(c=>['wind_power_density','temperature','pressure','humidity','voltage'].includes(c.element)).map(c=>({...c}));
  return {time:ti,clock,flag,channels,catalog,parameterChannels,warnings,dictionaryVersion:C.version};
 }
-function parseTable(text){text=text.replace(/^\uFEFF/,'');const lines=text.split(/\r?\n/);let best=-1,score=-1,delimiter=',';for(let i=0;i<Math.min(lines.length,60);i++){const line=lines[i];for(const sep of ['\t',',',';']){const hs=line.split(sep).map(s=>s.replace(/^"|"$/g,'').trim()),d=detect(hs);const n=(d.time>=0?10:0)+(d.channels.length?10:0)+Math.min(hs.length,10);if(hs.length>1&&n>score){best=i;score=n;delimiter=sep}}}if(best<0)throw Error('无法识别表头或分隔符；请使用带时间列和风速列的CSV/TXT。');
- const input=lines.slice(best).join('\n');let rows=[],row=[],cell='',quote=false;
+function splitCSV(input,delimiter){let rows=[],row=[],cell='',quote=false;
  for(let i=0;i<input.length;i++){const c=input[i];if(c==='"'){if(quote&&input[i+1]==='"'){cell+='"';i++}else quote=!quote}else if(c===delimiter&&!quote){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quote){if(c==='\r'&&input[i+1]==='\n')i++;row.push(cell);if(row.some(v=>v.trim()))rows.push(row);row=[];cell=''}else cell+=c}
- if(quote)throw Error('文件存在未闭合的引号。');row.push(cell);if(row.some(v=>v.trim()))rows.push(row);if(rows.length<2)throw Error('文件没有数据行。');if(rows.length>1000001)throw Error('单文件最多100万行，请分批或转换为小时中尺度序列。');const headers=rows.shift().map(s=>s.trim());if(new Set(headers).size!==headers.length||headers.some(s=>!s))throw Error('表头列名不能为空或重复。');return {headers,rows,preambleLines:best,delimiter};
+ if(quote)throw Error('文件存在未闭合的引号。');row.push(cell);if(row.some(v=>v.trim()))rows.push(row);return rows;
+}
+function whitespaceParts(line){const wide=line.trim().split(/\t+| {2,}/);return wide.length>1?wide:line.trim().split(/\s+/)}
+function metadataCell(value){const x=String(value).trim();return !x||/^(?:\d{1,3}(?:[.,]\d+)?\s*(?:m|米)|m\/?s|km\/?h|deg|degree|°|º|°c|℃|hpa|kpa|pa|%|rh|v|mv|w\/m[²2]|avg|average|mean|sd|std|stddev|stdev|min|max|minimum|maximum|height|heights|units?|高度|单位|均值|平均值|最大值|最小值|标准差)$/i.test(x)}
+function parseTable(text,options={}){text=text.replace(/^\uFEFF/,'');const lines=text.split(/\r?\n/);const delimiters=options.delimiter&&options.delimiter!=='auto'?[options.delimiter==='tab'?'\t':options.delimiter]:['\t',',',';','whitespace'];let best=-1,score=-1,delimiter=',';
+ const start=options.headerRow?options.headerRow-1:0,stop=options.headerRow?start+1:Math.min(lines.length,200);if(start<0||start>=lines.length)throw Error('所选表头行超出文件范围。');
+ for(let i=start;i<stop;i++){const line=lines[i];for(const sep of delimiters){let hs;try{hs=sep==='whitespace'?whitespaceParts(line):splitCSV(line,sep)[0]||[]}catch{continue}if(hs.length<2)continue;const d=detect(hs);const n=(d.time>=0?10:0)+(d.channels.length?10:0)+Math.min(hs.length,10)+(sep==='whitespace'?-.1:0);if(n>score){best=i;score=n;delimiter=sep}}}
+ if(best<0)throw Error('无法识别表头或分隔符，请打开解析设置，指定表头行及分隔符。');
+ let rows=delimiter==='whitespace'?lines.slice(best).filter(l=>l.trim()).map(whitespaceParts):splitCSV(lines.slice(best).join('\n'),delimiter);
+ if(rows.length<2)throw Error('文件需要表头和数据行。');if(rows.length>1000001)throw Error('单文件最多100万行。');
+ const originalHeaders=rows.shift().map(x=>String(x).trim()),headerParts=[originalHeaders];let headers=[...originalHeaders];
+ // Only merge conservative, wholly metadata-only rows, never numeric observations.
+ for(let i=0;i<3&&rows.length;i++){const next=rows[0];if(next.length!==headers.length||!next.every(metadataCell)||!next.some(x=>String(x).trim()))break;headerParts.push(rows.shift().map(x=>String(x).trim()))}
+ headers=headers.map((h,i)=>[h,...headerParts.slice(1).map(r=>r[i])].filter(Boolean).join(' ').trim());
+ if(options.allowDuplicateHeaders){const used=new Set();headers=headers.map((h,i)=>{let name=h||'未命名列'+(i+1);if(used.has(name))name+=' __COL'+(i+1);used.add(name);return name})}
+ if(new Set(headers).size!==headers.length||headers.some(h=>!h))throw Error('合并高度/单位行后表头仍为空或重复，请打开解析设置勾选保留重名列，再人工映射。');
+ if(delimiter==='whitespace'){const m=detect(headers);rows=rows.map(r=>{if(r.length===headers.length+1&&m.time===0&&m.clock<0&&/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(r[0])&&/^\d{1,2}:\d{2}/.test(r[1]))return [r[0]+' '+r[1],...r.slice(2)];return r})}
+ return {headers,originalHeaders,headerParts,rows,preambleLines:best,extraHeaderRows:headerParts.length-1,delimiter};
 }
 async function normalize(table,{file,stage='',offset=8,inputOffset=offset,format='ymd',defaultHeight=null,validFlags=['0','valid','good'],mapping=null,excel=false}={}){const map=mapping||detect(table.headers,file);if(map.time<0)throw Error('时间列未识别，请手动指定。');if(!map.channels.length)throw Error('风速通道未识别，请手动映射风速列。');if(map.channels.some(c=>c.unit==='unsupported'))throw Error('风速单位未支持，请先转换为m/s。');const parameterChannels=map.parameterChannels||[];const channels=map.channels.map(c=>({...c,height:c.height??(defaultHeight!==null&&defaultHeight!==''?Number(defaultHeight):null)}));let badTime=0,malformed=0,duplicates=0;const seen=new Set(),rows=[],grids=new Set();
  const lat=table.headers.findIndex(h=>/^(lat|latitude|纬度)$/i.test(h)),lon=table.headers.findIndex(h=>/^(lon|longitude|经度)$/i.test(h));

@@ -75,7 +75,7 @@ with TemporaryDirectory(prefix='wind-flow-') as temp:
   page.set_input_files('[data-single-stage="qc"]',{'name':'重新上传.csv','mimeType':'text/csv','buffer':Path(files[1]).read_bytes()})
   page.wait_for_function('realDatasets.qc!==null')
   page.evaluate("window.scrollTo(0,0);document.querySelector('#toast').style.display='none'")
-  page.screenshot(path=str(ROOT/'docs/GUI-V07-四类上传清单.png'),full_page=True)
+  page.screenshot(path=str(ROOT/'dist/验收-四类上传清单.png'),full_page=True)
   page.set_viewport_size({'width':390,'height':844})
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
   for stage in ['raw','qc','final','mesoscale']:page.click(f'[data-remove-stage="{stage}"]')
