@@ -16,6 +16,14 @@ with sync_playwright() as p:
   page.click(f'[data-chart="{key}"]')
   assert page.locator('#v03Composition svg,#mainChart svg').count()>0,key
  assert len(ids)==12
+ # Ensure rendered chart groups precede tables, and all rules follow tables.
+ for key in ids[:9]:
+  page.click(f'[data-chart="{key}"]')
+  assert page.evaluate("""()=>{
+   const r=document.querySelector('#v03Composition');
+   const graph=r.querySelector('svg'), table=r.querySelector('table'), rules=r.querySelector('.presentationRules');
+   return !!graph && !!rules && (!table || !!(graph.compareDocumentPosition(table)&Node.DOCUMENT_POSITION_FOLLOWING)) && (!table || !!(table.compareDocumentPosition(rules)&Node.DOCUMENT_POSITION_FOLLOWING));
+  }"""),key
  page.click('[data-chart="longterm"]');assert page.locator('#v03Composition svg').count()==2
  assert page.locator('#v03Composition table tr').count()==2
  page.click('[data-chart="overviewLines"]');assert page.locator('[data-series]').count()==4
@@ -74,7 +82,7 @@ with sync_playwright() as p:
  offline.goto('http://127.0.0.1:8000/standalone.html',wait_until='load')
  offline.click('nav [data-page="charts"]');offline.click('[data-chart="overviewLines"]')
  assert offline.locator('[data-series]').count()==4
- assert '0.3.0' in offline.locator('.appfooter').inner_text()
+ assert '0.3.1' in offline.locator('.appfooter').inner_text()
  assert not errors,errors
  b.close()
  print('PASS: chart order, four toggles/gaps, radar/year table, density colors/formula, 1/12/16 regression, baseline deviation, multiheight dual axes/tables, CSV/SVG/report downloads, real-source guard, mobile and offline GUI.')

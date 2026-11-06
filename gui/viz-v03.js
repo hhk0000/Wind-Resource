@@ -53,5 +53,38 @@ const renderV02=renderChart;
 renderChart=function(){const id=chartType;if($('#chartSource').value!=='example'||!ordered.some(g=>g[0]===id)){renderV02();$('#v03Composition')?.remove();$('#mainChart').style.display='';$('#chartTable').style.display='';$('#toggleTable').style.display='';return}renderV02();$('#v03Composition')?.remove();$('#mainChart').style.display='none';$('#chartTable').style.display='none';$('#sectorFilter').hidden=true;$('#toggleTable').style.display='none';$('#chartStats').innerHTML='';const wrap=document.createElement('div');wrap.id='v03Composition';const content={longterm:v03Long,overviewLines:v03Overview,density:v03Density,correlation:v03Correlation,shear:v03Shear,turbulence:v03Turbulence,monthly:()=>v03Time(false),daily:()=>v03Time(true),frequency:v03Frequency};wrap.innerHTML=content[id]();$('#mainChart').after(wrap);$('#svgDownload').disabled=false;$('#csvDownload').disabled=false;$('#chartNote').textContent='合成布局演示 · 参数、重建与规范算法尚未接入真实数据链。';$$('[data-series]').forEach(e=>e.onchange=()=>{v03State.visible[+e.dataset.series]=e.checked;renderChart()});if($('#v03SectorCount')){$('#v03SectorCount').value=v03State.sectorCount;$('#v03Sector').value=v03State.sector;$('#v03Baseline').value=v03State.baseline;$('#v03SectorCount').onchange=e=>{v03State.sectorCount=+e.target.value;v03State.sector='all';renderChart()};$('#v03Sector').onchange=e=>{v03State.sector=e.target.value;renderChart()};$('#v03Baseline').onchange=e=>{v03State.baseline=+e.target.value;renderChart()};$('#v03Threshold').onchange=e=>{const n=+e.target.value;if(!Number.isFinite(n)||n<0||n>100){toast('演示阈值需为0—100之间。');return}v03State.threshold=n;renderChart()}}};
 // Export a multi-panel SVG while preserving all panels and a source watermark.
 $('#svgDownload').onclick=()=>{const svgs=$('#v03Composition')?[...$('#v03Composition').querySelectorAll('svg')]:[$('#mainChart svg')].filter(Boolean);if(!svgs.length)return;let offset=40,total=40;const panels=svgs.map(svg=>{const v=svg.getAttribute('viewBox').split(' ').map(Number),height=900*v[3]/v[2];total+=height+25;return {svg,v,height}});let merged=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 ${total}"><rect width="100%" height="100%" fill="white"/><text x="20" y="24" font-family="sans-serif" font-size="15">${esc(activeGraph.title)} · ${$('#chartSource').value==='example'?'合成示例，非项目成果':'真实文件基础预检'}</text>`;panels.forEach(p=>{merged+=`<svg x="0" y="${offset}" width="900" height="${p.height}" viewBox="${p.v.join(' ')}">${p.svg.innerHTML}</svg>`;offset+=p.height+25});merged+='</svg>';download(activeGraph.title+'.svg',merged,'image/svg+xml;charset=utf-8')};
+// Consistent presentation: charts first, then data tables, then calculation rules.
+function arrangeChartPresentation(){
+ const root=$('#v03Composition');
+ if(root){
+  const tables=[...root.querySelectorAll('.tablewrap')];
+  const rules=[...root.querySelectorAll('.formulaCard,.v03fit,p.contextnote')];
+  tables.forEach(node=>{const heading=node.closest('.v03block')?.querySelector('h3');if(heading)node.prepend(heading.cloneNode(true));node.remove()});
+  rules.forEach(node=>node.remove());
+  // Drop headings whose entire table or explanation has been relocated.
+  root.querySelectorAll('.v03block').forEach(node=>{
+   if(!node.querySelector('svg,input,select,table')&&!node.querySelector('.v03legend'))node.remove();
+  });
+  const figures=document.createElement('section');figures.className='presentationFigures';
+  while(root.firstChild)figures.append(root.firstChild);
+  root.append(figures);
+  if(!tables.length&&chartType==='overviewLines'){
+   const node=document.createElement('div');node.className='tablewrap';node.innerHTML=table(currentHeaders,currentRows);tables.push(node);
+  }
+  if(tables.length){
+   const section=document.createElement('section');section.className='presentationTables';section.innerHTML='<h3>数据表格</h3>';
+   tables.forEach(node=>section.append(node));root.append(section);
+  }
+  const section=document.createElement('section');section.className='presentationRules';section.innerHTML='<h3>计算规则与说明</h3>';
+  rules.forEach(node=>section.append(node));
+  if(!rules.length)section.insertAdjacentHTML('beforeend','<p>表图采用同一示例数据口径；实际计算需确认数据来源、时段、单位与处理方法。</p>');
+  root.append(section);
+ }
+ // Shared notes for original and imported views follow the result table too.
+ const note=$('#chartNote'),tableNode=$('#chartTable');
+ tableNode.after(note);
+}
+const renderOrderedCharts=renderChart;
+renderChart=function(){renderOrderedCharts();arrangeChartPresentation()};
 chartType='longterm';
 metrics();renderSlots();windowPreview();renderReport();renderCatalog();navigate(location.hash.slice(1)||'overview');
